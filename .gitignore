@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+
+# TypeScript build output
+dist/
+build/
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Test output
+coverage/
+
+# Rust / LLVM backend (Phase 5)
+target/
+*.rlib
+
+# Environment
+.env
+.env.local
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# REPL history
+.liminal_history
