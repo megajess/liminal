@@ -173,9 +173,9 @@ export interface NilCoalesce extends BaseNode {
 }
 
 export interface NilUnwrapBlock extends BaseNode {
-  type: "NilUnwrapBlock"; // (? (non-nil-body) (nil-body))
+  type: "NilUnwrapBlock"; // (? body... [:is-nil nil-body...])
   nonNilBranch: ASTNode[];
-  nilBranch: ASTNode[];
+  nilBranch: ASTNode[] | null;  // null when no :is-nil clause provided
 }
 
 // --- Async ---

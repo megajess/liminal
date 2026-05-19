@@ -13,13 +13,21 @@
 (func display-name: String [name: String?]
   (?? name "Anonymous"))
 
-; Nil unwrap block
+; Nil unwrap block — :is-nil branch is optional
 (func safe-divide: Int [a: Int b: Int?]
   (?
-    ((local [divisor (ensure-nonzero b)]
-       (/ a divisor)))
-    ((log "b was nil, returning 0")
-     0)))
+    (local [divisor (ensure-nonzero b)]
+      (/ a divisor))
+    :is-nil
+    (log "b was nil, returning 0")
+    0))
+
+; Nil unwrap without fallback — just bail if nil
+(func process: Void [data: Data?]
+  (?
+    (do
+      (validate data)
+      (save data))))
 
 ; Optional chaining via nil propagation
 (func get-city: String? [user: User?]

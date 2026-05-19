@@ -500,16 +500,20 @@ export class Parser {
     };
   }
 
-  // --- (? (non-nil-body...) (nil-body...)) ---
+  // --- (? body... [:is-nil nil-body...]) ---
 
   private parseNilUnwrap(open: Token): ASTNode {
     this.expect(TokenType.NilUnwrap);
-    this.expect(TokenType.LeftParen);
-    const nonNilBranch = this.parseBody();
-    this.expect(TokenType.RightParen);
-    this.expect(TokenType.LeftParen);
-    const nilBranch = this.parseBody();
-    this.expect(TokenType.RightParen);
+    const nonNilBranch: ASTNode[] = [];
+    while (!this.check(TokenType.RightParen) && !this.check(TokenType.EOF)) {
+      if (this.check(TokenType.Keyword) && this.peek().value === ":is-nil") break;
+      nonNilBranch.push(this.parseExpr());
+    }
+    let nilBranch: ASTNode[] | null = null;
+    if (this.check(TokenType.Keyword) && this.peek().value === ":is-nil") {
+      this.advance(); // consume :is-nil
+      nilBranch = this.parseBody();
+    }
     this.expect(TokenType.RightParen);
     return {
       type: "NilUnwrapBlock",

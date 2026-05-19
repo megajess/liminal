@@ -346,11 +346,19 @@ test("nil coalesce", () => {
   });
 });
 
-test("nil unwrap block", () => {
-  expect(parseOne("(? ((const x 1) x) ((const x 0) x))")).toMatchObject({
+test("nil unwrap block with :is-nil branch", () => {
+  expect(parseOne("(? (const x 1) x :is-nil (const x 0) x)")).toMatchObject({
     type: "NilUnwrapBlock",
     nonNilBranch: [{ type: "ConstDeclaration" }, { type: "Symbol" }],
     nilBranch: [{ type: "ConstDeclaration" }, { type: "Symbol" }],
+  });
+});
+
+test("nil unwrap block without :is-nil branch", () => {
+  expect(parseOne("(? (const x 1) x)")).toMatchObject({
+    type: "NilUnwrapBlock",
+    nonNilBranch: [{ type: "ConstDeclaration" }, { type: "Symbol" }],
+    nilBranch: null,
   });
 });
 
