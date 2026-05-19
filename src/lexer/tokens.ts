@@ -43,8 +43,16 @@ export enum TokenType {
   NilCoalesce = "NilCoalesce",   // ??
   NilUnwrap = "NilUnwrap",     // ?
 
+  // Namespace separator
+  Slash = "Slash",           // /
+
   // Interop
   Interop = "Interop",       // %
+
+  // Interpolated strings
+  InterpolatedStringStart = "InterpolatedStringStart",  // opening " — value is text before first {
+  InterpolatedStringPart = "InterpolatedStringPart",    // literal segment between expressions
+  InterpolatedStringEnd = "InterpolatedStringEnd",      // closing " — value is text after last }
 
   // Quasiquoting
   QuasiQuote = "QuasiQuote",    // `
