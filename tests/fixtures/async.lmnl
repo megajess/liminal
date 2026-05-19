@@ -1,0 +1,28 @@
+; Async functions and error handling
+
+(import fs :from "fs-extra")
+
+(async func read-file: String [path: String]
+  (try
+    (local [content (await (%fs/readFile path "utf8"))]
+      content)
+    (catch err
+      (log "Failed to read {path}: {err:message}")
+      nil)))
+
+(async func write-file: Bool [path: String content: String]
+  (try
+    (do
+      (await (%fs/writeFile path content "utf8"))
+      true)
+    (catch err
+      (log "Write failed: {err:message}")
+      false)
+    (finally
+      (log "write-file finished"))))
+
+; Await in local binding
+(async func fetch-and-process: String [url: String]
+  (local [response (await (%fetch url))
+          text     (await (response:text))]
+    text))

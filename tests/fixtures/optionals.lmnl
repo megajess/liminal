@@ -1,0 +1,32 @@
+; Optional types, nil propagation, and nil operators
+
+; Optional var
+(var user-name: String? nil)
+
+; Non-optional var with deferred init
+(var result: Int)
+(if true
+  (set result 42)
+  :else (set result 0))
+
+; Nil coalescing
+(func display-name: String [name: String?]
+  (?? name "Anonymous"))
+
+; Nil unwrap block
+(func safe-divide: Int [a: Int b: Int?]
+  (?
+    ((local [divisor (ensure-nonzero b)]
+       (/ a divisor)))
+    ((log "b was nil, returning 0")
+     0)))
+
+; Optional chaining via nil propagation
+(func get-city: String? [user: User?]
+  user:address:city)
+
+; Optional param with default
+(func log-message: Void [
+  _ message: String
+  level: (String "info")]
+  (log "{level}: {message}"))

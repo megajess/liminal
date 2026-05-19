@@ -127,6 +127,18 @@ export interface CallExpression extends BaseNode {
   args: ASTNode[];
 }
 
+export interface SetExpression extends BaseNode {
+  type: "SetExpression";
+  name: string;
+  value: ASTNode;
+}
+
+export interface ImportDeclaration extends BaseNode {
+  type: "ImportDeclaration";
+  name: string;    // the local binding name
+  path: string;    // the module path string
+}
+
 // --- Control Flow ---
 
 export interface IfExpression extends BaseNode {
@@ -239,6 +251,8 @@ export type ASTNode =
   | FuncDeclaration
   | CallExpression
   | MemberAccess
+  | SetExpression
+  | ImportDeclaration
   | IfExpression
   | CondExpression
   | DoBlock

@@ -1,1 +1,38 @@
+; Basic function definitions and calls
 
+(func add: Int [a: Int b: Int]
+  (+ a b))
+
+(func greet: String [name: String]
+  "Hello {name}")
+
+; Positional and named params
+(func create-post: String [
+  _ title: String
+  _ body: String
+  draft: (Bool false)]
+  title)
+
+; Local bindings
+(func hypotenuse: Float [a: Float b: Float]
+  (local [a2 (* a a)
+          b2 (* b b)]
+    (sqrt (+ a2 b2))))
+
+; Higher-order / closures
+(func make-adder: Int [n: Int]
+  (func: Int [x: Int]
+    (+ x n)))
+
+; Recursive
+(func factorial: Int [n: Int]
+  (if (eq n 0)
+    1
+    :else (* n (factorial (- n 1)))))
+
+; Cond
+(func classify: String [n: Int]
+  (cond
+    (< n 0)  "negative"
+    (eq n 0) "zero"
+    :else    "positive"))
