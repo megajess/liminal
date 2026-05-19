@@ -133,6 +133,12 @@ export interface SetExpression extends BaseNode {
   value: ASTNode;
 }
 
+export interface MutateExpression extends BaseNode {
+  type: "MutateExpression";  // REPL-only — force-reassigns a const binding
+  name: string;
+  value: ASTNode;
+}
+
 export interface ImportDeclaration extends BaseNode {
   type: "ImportDeclaration";
   name: string;    // the local binding name
@@ -252,6 +258,7 @@ export type ASTNode =
   | CallExpression
   | MemberAccess
   | SetExpression
+  | MutateExpression
   | ImportDeclaration
   | IfExpression
   | CondExpression

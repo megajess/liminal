@@ -40,6 +40,7 @@ export enum TokenType {
   Catch = "Catch",
   Finally = "Finally",
   Macro = "Macro",
+  Mutate = "Mutate",         // REPL-only force-reassign of const
 
   // Nil operators
   NilCoalesce = "NilCoalesce",   // ??

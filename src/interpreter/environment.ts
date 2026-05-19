@@ -1,42 +1,125 @@
+import type { ASTNode, FuncParam } from "../ast/types";
 import { NilValue } from "./nilValue";
 
 // ============================================================
-// Environment
-// Manages lexical scope and variable bindings.
+// Runtime value types
 // ============================================================
 
-export type LiminalValue = number | string | boolean | NilValue | LiminalValue[] | LiminalFunction | null;
+export type LiminalMap = Map<string, LiminalValue>;
+
+export interface InteropValue {
+  kind: "interop";
+  value: unknown;
+}
 
 export interface LiminalFunction {
   kind: "function";
   name: string | null;
-  params: string[];
-  body: unknown[];   // ASTNode[] — typed loosely to avoid circular import
+  params: FuncParam[];
+  body: ASTNode[];
   closure: Environment;
+  async: boolean;
 }
+
+export type BuiltinFunction = (...args: LiminalValue[]) => LiminalValue;
+
+export type LiminalValue =
+  | number
+  | string
+  | boolean
+  | NilValue
+  | LiminalValue[]
+  | LiminalFunction
+  | BuiltinFunction
+  | LiminalMap
+  | InteropValue
+  | null;
+
+export function isLiminalMap(v: LiminalValue): v is LiminalMap {
+  return v instanceof Map;
+}
+
+export function isInteropValue(v: LiminalValue): v is InteropValue {
+  return (
+    typeof v === "object" &&
+    v !== null &&
+    !Array.isArray(v) &&
+    !(v instanceof Map) &&
+    !(v instanceof NilValue) &&
+    "kind" in (v as object) &&
+    (v as InteropValue).kind === "interop"
+  );
+}
+
+export function isLiminalFunction(v: LiminalValue): v is LiminalFunction {
+  return (
+    typeof v === "object" &&
+    v !== null &&
+    !Array.isArray(v) &&
+    !(v instanceof Map) &&
+    !(v instanceof NilValue) &&
+    "kind" in (v as object) &&
+    (v as LiminalFunction).kind === "function"
+  );
+}
+
+export function isBuiltinFunction(v: LiminalValue): v is BuiltinFunction {
+  return typeof v === "function";
+}
+
+// ============================================================
+// Environment — manages lexical scope and variable bindings
+// ============================================================
 
 export class Environment {
   private bindings = new Map<string, LiminalValue>();
   private initialized = new Set<string>();
+  private consts = new Set<string>();
   private parent: Environment | null;
 
   constructor(parent: Environment | null = null) {
     this.parent = parent;
   }
 
+  // Define a var binding (mutable)
   define(name: string, value: LiminalValue, isInitialized = true): void {
     this.bindings.set(name, value);
     if (isInitialized) this.initialized.add(name);
   }
 
+  // Define a const binding (immutable — set throws, mutate bypasses)
+  defineConst(name: string, value: LiminalValue): void {
+    this.bindings.set(name, value);
+    this.initialized.add(name);
+    this.consts.add(name);
+  }
+
+  // Reassign a var binding — throws on const
   assign(name: string, value: LiminalValue): void {
     if (this.bindings.has(name)) {
+      if (this.consts.has(name)) {
+        throw new Error(`Cannot reassign const '${name}' — use mutate in the REPL to force`);
+      }
       this.bindings.set(name, value);
       this.initialized.add(name);
       return;
     }
     if (this.parent) {
       this.parent.assign(name, value);
+      return;
+    }
+    throw new Error(`Undefined variable: ${name}`);
+  }
+
+  // Force-reassign any binding regardless of const — REPL only
+  mutate(name: string, value: LiminalValue): void {
+    if (this.bindings.has(name)) {
+      this.bindings.set(name, value);
+      this.initialized.add(name);
+      return;
+    }
+    if (this.parent) {
+      this.parent.mutate(name, value);
       return;
     }
     throw new Error(`Undefined variable: ${name}`);

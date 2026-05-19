@@ -27,6 +27,7 @@ const SPECIAL_FORMS: Record<string, TokenType> = {
   catch: TokenType.Catch,
   finally: TokenType.Finally,
   macro: TokenType.Macro,
+  mutate: TokenType.Mutate,
 };
 
 function isDigit(ch: string): boolean {
@@ -37,19 +38,20 @@ function isAlpha(ch: string): boolean {
   return (ch >= "a" && ch <= "z") || (ch >= "A" && ch <= "Z");
 }
 
-// Valid symbol start: letter, _, +, *, -
+// Valid symbol start: letter, _, +, *, -, <, >, =
 function isSymbolStart(ch: string): boolean {
-  return isAlpha(ch) || ch === "_" || ch === "+" || ch === "*" || ch === "-";
+  return isAlpha(ch) || ch === "_" || ch === "+" || ch === "*" || ch === "-" || ch === "<" || ch === ">" || ch === "=";
 }
 
-// Valid symbol continuation: letter, digit, _, +, *, -
+// Valid symbol continuation: letter, digit, _, +, *, -, <, >, =
 function isSymbolContinue(ch: string): boolean {
-  return isAlpha(ch) || isDigit(ch) || ch === "_" || ch === "+" || ch === "*" || ch === "-";
+  return isAlpha(ch) || isDigit(ch) || ch === "_" || ch === "+" || ch === "*" || ch === "-" || ch === "<" || ch === ">" || ch === "=";
 }
 
 function isWhitespace(ch: string): boolean {
   return ch === " " || ch === "\t" || ch === "\r" || ch === "\n";
 }
+
 
 export class Lexer {
   private source: string;
@@ -146,6 +148,17 @@ export class Lexer {
     }
 
     if (ch === ":") {
+      // If : is immediately adjacent to the previous token (no whitespace before it)
+      // and a symbol char follows, it's a member-access Colon rather than a keyword.
+      // Symbols handle their own trailing : inside scanSymbol; this case fires only
+      // for non-symbol tokens like String, Number, ), ] etc.
+      const prevChar = this.pos > 0 ? this.source[this.pos - 1] : "";
+      const afterColon = this.peek(1);
+      if (!isWhitespace(prevChar) && prevChar !== "" && isSymbolStart(afterColon)) {
+        this.advance(); // consume :
+        this.emit(TokenType.Colon, ":", l, c);
+        return;
+      }
       this.scanKeyword(l, c);
       return;
     }

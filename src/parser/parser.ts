@@ -110,7 +110,23 @@ export class Parser {
 
   // --- Atoms ---
 
+  // Parses any atom, then chains any following Colon member accesses: expr:a:b
   private parseAtom(): ASTNode {
+    let node = this.parseAtomBase();
+    while (this.check(TokenType.Colon)) {
+      const colon = this.advance();
+      const member = this.expect(TokenType.Symbol);
+      node = {
+        type: "MemberAccess",
+        object: node,
+        member: member.value,
+        loc: { line: colon.line, column: colon.column },
+      };
+    }
+    return node;
+  }
+
+  private parseAtomBase(): ASTNode {
     const tok = this.peek();
 
     if (tok.type === TokenType.Number) {
@@ -127,6 +143,11 @@ export class Parser {
     }
     if (tok.type === TokenType.Nil) {
       this.advance();
+      // nil? is a predicate function name, not the nil literal
+      if (this.check(TokenType.QuestionMark)) {
+        this.advance();
+        return { type: "Symbol", name: "nil?", loc: { line: tok.line, column: tok.column } };
+      }
       return { type: "NilLiteral", trace: null, loc: { line: tok.line, column: tok.column } };
     }
     if (tok.type === TokenType.Keyword) {
@@ -134,24 +155,17 @@ export class Parser {
       return { type: "Symbol", name: tok.value, loc: { line: tok.line, column: tok.column } };
     }
     if (tok.type === TokenType.Symbol) {
-      return this.parseSymbolOrMemberAccess();
+      const t = this.advance();
+      // Allow ? suffix on symbol names: nil?, number?, etc.
+      let name = t.value;
+      if (this.check(TokenType.QuestionMark)) {
+        this.advance();
+        name += "?";
+      }
+      return { type: "Symbol", name, loc: { line: t.line, column: t.column } };
     }
 
     this.error(`Unexpected token: ${tok.type} ('${tok.value}')`);
-  }
-
-  // Parses a symbol, then chains any following Colon accesses: a:b:c
-  private parseSymbolOrMemberAccess(): ASTNode {
-    const tok = this.expect(TokenType.Symbol);
-    let node: ASTNode = { type: "Symbol", name: tok.value, loc: { line: tok.line, column: tok.column } };
-
-    while (this.check(TokenType.Colon)) {
-      this.advance(); // consume :
-      const member = this.expect(TokenType.Symbol);
-      node = { type: "MemberAccess", object: node, member: member.value, loc: { line: tok.line, column: tok.column } };
-    }
-
-    return node;
   }
 
   // --- Interpolated string ---
@@ -236,6 +250,7 @@ export class Parser {
       case TokenType.Cond:    return this.parseCond(open);
       case TokenType.Do:      return this.parseDo(open);
       case TokenType.Set:     return this.parseSet(open);
+      case TokenType.Mutate:  return this.parseMutate(open);
       case TokenType.Import:  return this.parseImport(open);
       case TokenType.Try:     return this.parseTry(open);
       case TokenType.Await:   return this.parseAwait(open);
@@ -409,6 +424,21 @@ export class Parser {
     };
   }
 
+  // --- (mutate name value) — REPL-only force-reassign ---
+
+  private parseMutate(open: Token): ASTNode {
+    this.expect(TokenType.Mutate);
+    const nameTok = this.expect(TokenType.Symbol);
+    const value = this.parseExpr();
+    this.expect(TokenType.RightParen);
+    return {
+      type: "MutateExpression",
+      name: nameTok.value,
+      value,
+      loc: { line: open.line, column: open.column },
+    };
+  }
+
   // --- (import name :from "path") ---
 
   private parseImport(open: Token): ASTNode {
@@ -548,13 +578,17 @@ export class Parser {
   // --- (callee arg...) — general call, also handles namespace and member calls ---
 
   private parseCall(open: Token): ASTNode {
-    // The callee may be: symbol, symbol/symbol, symbol:symbol, %symbol...
+    // The callee may be: symbol, symbol/symbol, symbol:symbol, %symbol..., or / as division
     let callee: ASTNode;
 
     if (this.check(TokenType.Interop)) {
       callee = this.parseInteropExpr();
     } else if (this.check(TokenType.Symbol)) {
       callee = this.parseCalleeExpr();
+    } else if (this.check(TokenType.Slash)) {
+      // / used as division operator: (/ a b)
+      const slash = this.advance();
+      callee = { type: "Symbol", name: "/", loc: { line: slash.line, column: slash.column } };
     } else {
       callee = this.parseExpr();
     }
@@ -569,10 +603,16 @@ export class Parser {
     return { type: "CallExpression", callee, args, loc };
   }
 
-  // Parses a symbol that may be followed by / or : to form a namespace/member callee.
+  // Parses a symbol that may be followed by ?, /, or : to form a namespace/member callee.
   private parseCalleeExpr(): ASTNode {
     const tok = this.expect(TokenType.Symbol);
-    let node: ASTNode = { type: "Symbol", name: tok.value, loc: { line: tok.line, column: tok.column } };
+    let name = tok.value;
+    // Allow ? suffix: nil?, number?, etc.
+    if (this.check(TokenType.QuestionMark)) {
+      this.advance();
+      name += "?";
+    }
+    let node: ASTNode = { type: "Symbol", name, loc: { line: tok.line, column: tok.column } };
 
     while (this.check(TokenType.Slash) || this.check(TokenType.Colon)) {
       const sep = this.advance();
@@ -610,7 +650,7 @@ export class Parser {
   }
 
   private parseParam(): FuncParam {
-    // Positional: _ name: Type
+    // Positional: _ name: Type  (no defaults on positional params)
     if (this.check(TokenType.Symbol) && this.peek().value === "_") {
       this.advance(); // consume _
       const name = this.expect(TokenType.Symbol);
@@ -624,34 +664,38 @@ export class Parser {
     const first = this.expect(TokenType.Symbol);
 
     if (this.check(TokenType.TypeColon)) {
-      // Shorthand: label: Type [?] [(Type default)]
-      const typeAnnotation = this.parseRequiredTypeAnnotation();
-      const defaultValue = this.tryParseParamDefault();
+      // Shorthand: label: Type[?] or label: (Type[?] default)
+      this.advance(); // consume :
+      const { typeAnnotation, defaultValue } = this.parseTypeWithOptionalDefault();
       return { externalName: first.value, name: first.value, typeAnnotation, defaultValue };
     }
 
     if (this.check(TokenType.Symbol)) {
-      // Full form: externalName internalName: Type
+      // Full form: externalName internalName: Type[?] or externalName internalName: (Type[?] default)
       const internal = this.advance();
-      const typeAnnotation = this.parseRequiredTypeAnnotation();
-      const defaultValue = this.tryParseParamDefault();
+      this.expect(TokenType.TypeColon);
+      const { typeAnnotation, defaultValue } = this.parseTypeWithOptionalDefault();
       return { externalName: first.value, name: internal.value, typeAnnotation, defaultValue };
     }
 
     this.error(`Unexpected token in parameter list: ${this.peek().type}`);
   }
 
-  // Parses (Type defaultValue) for default parameter values
-  private tryParseParamDefault(): ASTNode | null {
-    // Default form: (Type value) — a parenthesized pair
+  // Parses TypeName[?] or (TypeName[?] defaultExpr) — called AFTER TypeColon has been consumed.
+  private parseTypeWithOptionalDefault(): { typeAnnotation: TypeAnnotation; defaultValue: ASTNode | null } {
     if (this.check(TokenType.LeftParen)) {
+      // (Type[?] defaultValue) form
       this.advance(); // (
-      this.expect(TokenType.Symbol); // consume the type name (redundant — already in typeAnnotation)
+      const typeTok = this.expect(TokenType.Symbol);
+      const optional = this.check(TokenType.QuestionMark) ? (this.advance(), true) : false;
+      const typeAnnotation: TypeAnnotation = { name: typeTok.value, optional };
       const defaultValue = this.parseExpr();
       this.expect(TokenType.RightParen);
-      return defaultValue;
+      return { typeAnnotation, defaultValue };
     }
-    return null;
+    const typeTok = this.expect(TokenType.Symbol);
+    const optional = this.check(TokenType.QuestionMark) ? (this.advance(), true) : false;
+    return { typeAnnotation: { name: typeTok.value, optional }, defaultValue: null };
   }
 
   // --- Type annotation helpers ---
