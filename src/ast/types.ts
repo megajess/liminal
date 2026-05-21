@@ -72,6 +72,16 @@ export interface LiminalList extends BaseNode {
   elements: ASTNode[];
 }
 
+export interface LiminalDict extends BaseNode {
+  type: "Dict";
+  entries: { key: string; value: ASTNode }[];  // key is bare keyword name (":name" → "name")
+}
+
+export interface LiminalTuple extends BaseNode {
+  type: "Tuple";
+  elements: ASTNode[];
+}
+
 // --- Bindings ---
 
 export interface ConstDeclaration extends BaseNode {
@@ -184,6 +194,13 @@ export interface NilUnwrapBlock extends BaseNode {
   nilBranch: ASTNode[] | null;  // null when no :is-nil clause provided
 }
 
+// --- Throw ---
+
+export interface ThrowExpression extends BaseNode {
+  type: "ThrowExpression";
+  value: ASTNode;
+}
+
 // --- Async ---
 
 export interface AwaitExpression extends BaseNode {
@@ -251,6 +268,8 @@ export type ASTNode =
   | NilLiteral
   | Symbol
   | LiminalList
+  | LiminalDict
+  | LiminalTuple
   | ConstDeclaration
   | VarDeclaration
   | LocalBinding
@@ -265,6 +284,7 @@ export type ASTNode =
   | DoBlock
   | NilCoalesce
   | NilUnwrapBlock
+  | ThrowExpression
   | AwaitExpression
   | TryCatch
   | InteropExpression

@@ -2,7 +2,7 @@ import { tokenize } from "../lexer/lexer";
 import { parse } from "../parser/parser";
 import { Interpreter, RuntimeError } from "./interpreter";
 import { NilValue, isNil } from "./nilValue";
-import { isLiminalMap } from "./environment";
+import { isLiminalMap, isLiminalTuple } from "./environment";
 
 function run(src: string) {
   const interp = new Interpreter();
@@ -285,6 +285,88 @@ test("nil? false for number", () => { expect(run("(nil? 1)")).toBe(false); });
 test("number?", () => { expect(run("(number? 42)")).toBe(true); });
 test("string?", () => { expect(run('(string? "hi")')).toBe(true); });
 test("list?", () => { expect(run("(list? (list 1 2))")).toBe(true); });
+
+// --- dict literal ---
+
+test("dict creation", () => {
+  const result = run('(dict :name "Alice" :age 30)');
+  expect(isLiminalMap(result)).toBe(true);
+  const m = result as Map<string, unknown>;
+  expect(m.get("name")).toBe("Alice");
+  expect(m.get("age")).toBe(30);
+});
+
+test("dict: empty", () => {
+  const result = run("(dict)");
+  expect(isLiminalMap(result)).toBe(true);
+  expect((result as Map<string, unknown>).size).toBe(0);
+});
+
+test("dict member access", () => {
+  const interp = new Interpreter();
+  runWith(interp, '(const p (dict :name "Bob" :score 99))');
+  expect(runWith(interp, "p:name")).toBe("Bob");
+  expect(runWith(interp, "p:score")).toBe(99);
+});
+
+test("dict?", () => {
+  expect(run("(dict? (dict :a 1))")).toBe(true);
+  expect(run("(dict? (list 1 2))")).toBe(false);
+  expect(run("(dict? 42)")).toBe(false);
+});
+
+// --- tuple literal ---
+
+test("tuple creation", () => {
+  const result = run('(tuple "hello" 42 true)');
+  expect(isLiminalTuple(result)).toBe(true);
+});
+
+test("tuple: empty", () => {
+  const result = run("(tuple)");
+  expect(isLiminalTuple(result)).toBe(true);
+});
+
+test("tuple: numeric index access", () => {
+  const interp = new Interpreter();
+  runWith(interp, '(const t (tuple "hello" 42 true))');
+  expect(runWith(interp, "t:0")).toBe("hello");
+  expect(runWith(interp, "t:1")).toBe(42);
+  expect(runWith(interp, "t:2")).toBe(true);
+});
+
+test("tuple: out-of-bounds returns nil", () => {
+  const interp = new Interpreter();
+  runWith(interp, "(const t (tuple 1 2))");
+  expect(isNil(runWith(interp, "t:9"))).toBe(true);
+});
+
+test("tuple: length", () => {
+  expect(run("(tuple 1 2 3):length")).toBe(3);
+});
+
+test("tuple?", () => {
+  expect(run("(tuple? (tuple 1 2))")).toBe(true);
+  expect(run("(tuple? (list 1 2))")).toBe(false);
+  expect(run("(tuple? (dict :a 1))")).toBe(false);
+});
+
+// --- throw / ThrowExpression ---
+
+test("throw is caught by try/catch", () => {
+  expect(run('(try (throw "boom") (catch err err:message))')).toBe("boom");
+});
+
+test("throw propagates out of try body", () => {
+  const interp = new Interpreter();
+  runWith(interp, '(func risky [] (throw "oops"))');
+  expect(runWith(interp, '(try (risky) (catch err "caught"))')).toBe("caught");
+});
+
+test("throw a dict value — catch sees map fields", () => {
+  const result = run('(try (throw (dict :code 404 :msg "Not found")) (catch err err:code))');
+  expect(result).toBe(404);
+});
 
 // --- error cases ---
 

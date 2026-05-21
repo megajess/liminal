@@ -74,55 +74,57 @@ export class Parser {
 
   private parseExpr(): ASTNode {
     const tok = this.peek();
+    let node: ASTNode;
 
     // Interpolated string — reassemble from lexer segments
     if (tok.type === TokenType.InterpolatedStringStart) {
-      return this.parseInterpolatedString();
-    }
+      node = this.parseInterpolatedString();
 
-    // Interop expression: %symbol or %symbol:chain
-    if (tok.type === TokenType.Interop) {
+    // Interop expression: %symbol — chains its own Colon/Slash internally
+    } else if (tok.type === TokenType.Interop) {
       return this.parseInteropExpr();
-    }
 
-    // Quasiquoting
-    if (tok.type === TokenType.QuasiQuote) {
+    // Quasiquoting — early return, no trailing member chain expected
+    } else if (tok.type === TokenType.QuasiQuote) {
       this.advance();
       return { type: "QuasiQuote", expression: this.parseExpr(), loc: tok };
-    }
-    if (tok.type === TokenType.Unquote) {
+    } else if (tok.type === TokenType.Unquote) {
       this.advance();
       return { type: "Unquote", expression: this.parseExpr(), loc: tok };
-    }
-    if (tok.type === TokenType.UnquoteSplice) {
+    } else if (tok.type === TokenType.UnquoteSplice) {
       this.advance();
       return { type: "UnquoteSplice", expression: this.parseExpr(), loc: tok };
-    }
 
     // List form: ( ... )
-    if (tok.type === TokenType.LeftParen) {
-      return this.parseList();
+    } else if (tok.type === TokenType.LeftParen) {
+      node = this.parseList();
+
+    // Atoms and base expressions
+    } else {
+      node = this.parseAtomBase();
     }
 
-    // Literals and atoms
-    return this.parseAtom();
-  }
-
-  // --- Atoms ---
-
-  // Parses any atom, then chains any following Colon member accesses: expr:a:b
-  private parseAtom(): ASTNode {
-    let node = this.parseAtomBase();
+    // Unified Colon member access chaining — applies after any expression form.
+    // Handles: symbol:prop, (expr):result, "str":length, tuple:0, etc.
     while (this.check(TokenType.Colon)) {
       const colon = this.advance();
-      const member = this.expect(TokenType.Symbol);
+      let member: string;
+      if (this.check(TokenType.Symbol)) {
+        member = this.advance().value;
+      } else if (this.check(TokenType.Number)) {
+        // Numeric index access for tuples: t:0, t:1, etc.
+        member = String(Number(this.advance().value));
+      } else {
+        this.error(`Expected member name after ':'`);
+      }
       node = {
         type: "MemberAccess",
         object: node,
-        member: member.value,
+        member,
         loc: { line: colon.line, column: colon.column },
       };
     }
+
     return node;
   }
 
@@ -257,6 +259,15 @@ export class Parser {
       case TokenType.NilCoalesce: return this.parseNilCoalesce(open);
       case TokenType.NilUnwrap:   return this.parseNilUnwrap(open);
       case TokenType.Macro:   return this.parseMacro(open);
+      case TokenType.Symbol: {
+        // Symbol-headed special forms — dispatched by name, not token type.
+        // Guard against predicate suffixes: (dict? ...) must fall through to parseCall.
+        const noQMark = !this.check(TokenType.QuestionMark, 1);
+        if (head.value === "dict"  && noQMark) return this.parseDict(open);
+        if (head.value === "tuple" && noQMark) return this.parseTuple(open);
+        if (head.value === "throw")            return this.parseThrow(open);
+        return this.parseCall(open);
+      }
       default:
         return this.parseCall(open);
     }
@@ -573,6 +584,42 @@ export class Parser {
       body,
       loc: { line: open.line, column: open.column },
     };
+  }
+
+  // --- (dict :key val ...) — Dict literal ---
+
+  private parseDict(open: Token): ASTNode {
+    this.expect(TokenType.Symbol); // consume "dict"
+    const entries: { key: string; value: ASTNode }[] = [];
+    while (!this.check(TokenType.RightParen) && !this.check(TokenType.EOF)) {
+      const kw = this.expect(TokenType.Keyword);
+      const key = kw.value.startsWith(":") ? kw.value.slice(1) : kw.value;
+      const value = this.parseExpr();
+      entries.push({ key, value });
+    }
+    this.expect(TokenType.RightParen);
+    return { type: "Dict", entries, loc: { line: open.line, column: open.column } };
+  }
+
+  // --- (tuple val ...) — Tuple literal ---
+
+  private parseTuple(open: Token): ASTNode {
+    this.expect(TokenType.Symbol); // consume "tuple"
+    const elements: ASTNode[] = [];
+    while (!this.check(TokenType.RightParen) && !this.check(TokenType.EOF)) {
+      elements.push(this.parseExpr());
+    }
+    this.expect(TokenType.RightParen);
+    return { type: "Tuple", elements, loc: { line: open.line, column: open.column } };
+  }
+
+  // --- (throw expr) — Throw expression ---
+
+  private parseThrow(open: Token): ASTNode {
+    this.expect(TokenType.Symbol); // consume "throw"
+    const value = this.parseExpr();
+    this.expect(TokenType.RightParen);
+    return { type: "ThrowExpression", value, loc: { line: open.line, column: open.column } };
   }
 
   // --- (callee arg...) — general call, also handles namespace and member calls ---

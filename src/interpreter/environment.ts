@@ -12,6 +12,11 @@ export interface InteropValue {
   value: unknown;
 }
 
+export interface LiminalTuple {
+  kind: "tuple";
+  elements: LiminalValue[];
+}
+
 export interface LiminalFunction {
   kind: "function";
   name: string | null;
@@ -32,11 +37,24 @@ export type LiminalValue =
   | LiminalFunction
   | BuiltinFunction
   | LiminalMap
+  | LiminalTuple
   | InteropValue
   | null;
 
 export function isLiminalMap(v: LiminalValue): v is LiminalMap {
   return v instanceof Map;
+}
+
+export function isLiminalTuple(v: LiminalValue): v is LiminalTuple {
+  return (
+    typeof v === "object" &&
+    v !== null &&
+    !Array.isArray(v) &&
+    !(v instanceof Map) &&
+    !(v instanceof NilValue) &&
+    "kind" in (v as object) &&
+    (v as LiminalTuple).kind === "tuple"
+  );
 }
 
 export function isInteropValue(v: LiminalValue): v is InteropValue {

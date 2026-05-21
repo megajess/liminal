@@ -4,8 +4,10 @@ import {
   LiminalValue,
   LiminalFunction,
   LiminalMap,
+  LiminalTuple,
   InteropValue,
   isLiminalMap,
+  isLiminalTuple,
   isInteropValue,
   isLiminalFunction,
   isBuiltinFunction,
@@ -27,6 +29,17 @@ export class RuntimeError extends Error {
 // Thrown inside a ? non-nil branch when nil is encountered — caught by NilUnwrapBlock
 class NilSignal {
   constructor(public readonly nil: NilValue) {}
+}
+
+// Thrown by (throw expr) — carries the original Liminal value through try/catch
+class LiminalThrowable extends Error {
+  constructor(
+    public readonly liminalValue: LiminalValue,
+    message: string
+  ) {
+    super(message);
+    this.name = "LiminalThrowable";
+  }
 }
 
 export class Interpreter {
@@ -84,6 +97,24 @@ export class Interpreter {
 
       case "List":
         return node.elements.map(el => this.eval(el, env));
+
+      case "Dict": {
+        const m: LiminalMap = new Map();
+        for (const { key, value } of node.entries) {
+          m.set(key, this.eval(value, env));
+        }
+        return m;
+      }
+
+      case "Tuple": {
+        const elements = node.elements.map(el => this.eval(el, env));
+        return { kind: "tuple", elements } as LiminalTuple;
+      }
+
+      case "ThrowExpression": {
+        const val = this.eval(node.value, env);
+        throw new LiminalThrowable(val, this.valueToString(val));
+      }
 
       case "ConstDeclaration": {
         const val = this.eval(node.value, env);
@@ -268,6 +299,17 @@ export class Interpreter {
       return val !== undefined ? val : new NilValue({ symbol: member, ...loc });
     }
 
+    if (isLiminalTuple(obj)) {
+      const idx = parseInt(member, 10);
+      if (!isNaN(idx)) {
+        return idx >= 0 && idx < obj.elements.length
+          ? obj.elements[idx]
+          : new NilValue({ symbol: member, ...loc });
+      }
+      if (member === "length") return obj.elements.length;
+      return new NilValue({ symbol: member, ...loc });
+    }
+
     if (isInteropValue(obj)) {
       const raw = (obj.value as Record<string, unknown>)[member];
       return this.jsToLiminal(raw, loc);
@@ -377,7 +419,12 @@ export class Interpreter {
 
   private wrapError(e: unknown): LiminalMap {
     const m: LiminalMap = new Map();
-    if (e instanceof Error) {
+    if (e instanceof LiminalThrowable) {
+      // If the thrown value is already a map, return it directly (for typed errors in Phase 4)
+      if (isLiminalMap(e.liminalValue)) return e.liminalValue;
+      m.set("message", e.message);
+      m.set("name", "LiminalThrowable");
+    } else if (e instanceof Error) {
       m.set("message", e.message);
       m.set("name", e.name);
       m.set("stack", e.stack ?? "");
@@ -419,6 +466,7 @@ export class Interpreter {
     if (typeof val === "string") return val;
     if (typeof val === "number" || typeof val === "boolean") return String(val);
     if (Array.isArray(val)) return `(list ${val.map(v => this.valueToString(v)).join(" ")})`;
+    if (isLiminalTuple(val)) return `(tuple ${val.elements.map(v => this.valueToString(v)).join(" ")})`;
     if (isLiminalMap(val)) {
       const parts = [...val.entries()].map(([k, v]) => `:${k} ${this.valueToString(v)}`);
       return `(map ${parts.join(" ")})`;

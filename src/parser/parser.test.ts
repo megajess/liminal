@@ -402,6 +402,55 @@ test("empty call", () => {
   });
 });
 
+// --- dict literal ---
+
+test("dict literal: empty", () => {
+  expect(parseOne("(dict)")).toMatchObject({ type: "Dict", entries: [] });
+});
+
+test("dict literal: single entry", () => {
+  expect(parseOne('(dict :name "Alice")')).toMatchObject({
+    type: "Dict",
+    entries: [{ key: "name", value: { type: "StringLiteral", value: "Alice" } }],
+  });
+});
+
+test("dict literal: multiple entries", () => {
+  expect(parseOne("(dict :x 1 :y 2)")).toMatchObject({
+    type: "Dict",
+    entries: [
+      { key: "x", value: { type: "NumberLiteral", value: 1 } },
+      { key: "y", value: { type: "NumberLiteral", value: 2 } },
+    ],
+  });
+});
+
+// --- tuple literal ---
+
+test("tuple literal: empty", () => {
+  expect(parseOne("(tuple)")).toMatchObject({ type: "Tuple", elements: [] });
+});
+
+test("tuple literal: elements", () => {
+  expect(parseOne('(tuple "hello" 42 true)')).toMatchObject({
+    type: "Tuple",
+    elements: [
+      { type: "StringLiteral", value: "hello" },
+      { type: "NumberLiteral", value: 42 },
+      { type: "BooleanLiteral", value: true },
+    ],
+  });
+});
+
+// --- throw expression ---
+
+test("throw expression", () => {
+  expect(parseOne('(throw "oops")')).toMatchObject({
+    type: "ThrowExpression",
+    value: { type: "StringLiteral", value: "oops" },
+  });
+});
+
 // --- program root ---
 
 test("multiple top-level expressions", () => {

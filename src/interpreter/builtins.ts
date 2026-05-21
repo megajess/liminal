@@ -1,4 +1,4 @@
-import { Environment, LiminalValue, LiminalMap, BuiltinFunction } from "./environment";
+import { Environment, LiminalValue, LiminalMap, LiminalTuple, BuiltinFunction, isLiminalMap, isLiminalTuple } from "./environment";
 import { NilValue, isNil } from "./nilValue";
 
 function nilIfAny(args: LiminalValue[]): NilValue | null {
@@ -20,9 +20,10 @@ function valueToString(v: LiminalValue): string {
   if (typeof v === "string") return v;
   if (typeof v === "number" || typeof v === "boolean") return String(v);
   if (Array.isArray(v)) return `(list ${v.map(valueToString).join(" ")})`;
+  if (isLiminalTuple(v)) return `(tuple ${v.elements.map(valueToString).join(" ")})`;
   if (v instanceof Map) {
     const parts = [...v.entries()].map(([k, val]) => `:${k} ${valueToString(val)}`);
-    return `(map ${parts.join(" ")})`;
+    return `(dict ${parts.join(" ")})`;
   }
   if (typeof v === "function") return "<builtin>";
   if (typeof v === "object" && "kind" in v) {
@@ -140,6 +141,23 @@ const BUILTINS: Record<string, BuiltinFunction> = {
     return m;
   },
 
+  // dict is the canonical dict constructor (map is kept as a legacy alias)
+  "dict": (...args) => {
+    if (args.length % 2 !== 0) {
+      throw new Error("dict: requires an even number of arguments (keyword-value pairs)");
+    }
+    const m: LiminalMap = new Map();
+    for (let i = 0; i < args.length; i += 2) {
+      const key = args[i];
+      if (typeof key !== "string") throw new Error("dict: keys must be keyword strings");
+      m.set(key.startsWith(":") ? key.slice(1) : key, args[i + 1]);
+    }
+    return m;
+  },
+
+  // tuple builtin — fallback for dynamic usage; (tuple ...) in source is parsed as Tuple AST node
+  "tuple": (...args): LiminalTuple => ({ kind: "tuple", elements: args }),
+
   // --- Math ---
 
   "sqrt": (...args) => {
@@ -187,6 +205,16 @@ const BUILTINS: Record<string, BuiltinFunction> = {
   "list?": (...args) => {
     if (args.length !== 1) throw new Error("list?: requires 1 argument");
     return Array.isArray(args[0]);
+  },
+
+  "dict?": (...args) => {
+    if (args.length !== 1) throw new Error("dict?: requires 1 argument");
+    return isLiminalMap(args[0]);
+  },
+
+  "tuple?": (...args) => {
+    if (args.length !== 1) throw new Error("tuple?: requires 1 argument");
+    return isLiminalTuple(args[0]);
   },
 };
 
