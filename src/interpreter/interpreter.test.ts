@@ -4,195 +4,195 @@ import { Interpreter, RuntimeError } from "./interpreter";
 import { NilValue, isNil } from "./nilValue";
 import { isLiminalMap, isLiminalTuple } from "./environment";
 
-function run(src: string) {
+async function run(src: string) {
   const interp = new Interpreter();
   return interp.run(parse(tokenize(src)));
 }
 
-function runWith(interp: Interpreter, src: string) {
+async function runWith(interp: Interpreter, src: string) {
   return interp.run(parse(tokenize(src)));
 }
 
 // --- Literals ---
 
-test("number literal", () => { expect(run("42")).toBe(42); });
-test("negative number", () => { expect(run("-7")).toBe(-7); });
-test("float", () => { expect(run("3.14")).toBe(3.14); });
-test("string literal", () => { expect(run('"hello"')).toBe("hello"); });
-test("boolean true", () => { expect(run("true")).toBe(true); });
-test("boolean false", () => { expect(run("false")).toBe(false); });
-test("nil literal", () => { expect(isNil(run("nil"))).toBe(true); });
+test("number literal", async () => { expect(await run("42")).toBe(42); });
+test("negative number", async () => { expect(await run("-7")).toBe(-7); });
+test("float", async () => { expect(await run("3.14")).toBe(3.14); });
+test("string literal", async () => { expect(await run('"hello"')).toBe("hello"); });
+test("boolean true", async () => { expect(await run("true")).toBe(true); });
+test("boolean false", async () => { expect(await run("false")).toBe(false); });
+test("nil literal", async () => { expect(isNil(await run("nil"))).toBe(true); });
 
 // --- Keywords are self-quoting ---
 
-test("keyword evaluates to itself", () => { expect(run(":hello")).toBe(":hello"); });
+test("keyword evaluates to itself", async () => { expect(await run(":hello")).toBe(":hello"); });
 
 // --- Interpolated string ---
 
-test("interpolated string", () => {
+test("interpolated string", async () => {
   const interp = new Interpreter();
-  runWith(interp, '(const name "World")');
-  expect(runWith(interp, '"Hello {name}"')).toBe("Hello World");
+  await runWith(interp, '(const name "World")');
+  expect(await runWith(interp, '"Hello {name}"')).toBe("Hello World");
 });
 
-test("interpolated string with expression", () => {
-  expect(run('"Result: {(+ 1 2)}"')).toBe("Result: 3");
+test("interpolated string with expression", async () => {
+  expect(await run('"Result: {(+ 1 2)}"')).toBe("Result: 3");
 });
 
 // --- Arithmetic ---
 
-test("addition", () => { expect(run("(+ 1 2 3)")).toBe(6); });
-test("subtraction", () => { expect(run("(- 10 3)")).toBe(7); });
-test("negate", () => { expect(run("(- 5)")).toBe(-5); });
-test("multiplication", () => { expect(run("(* 2 3 4)")).toBe(24); });
-test("division", () => { expect(run("(/ 12 4)")).toBe(3); });
-test("modulo", () => { expect(run("(mod 10 3)")).toBe(1); });
-test("nested arithmetic", () => { expect(run("(+ (* 2 3) (- 10 4))")).toBe(12); });
+test("addition", async () => { expect(await run("(+ 1 2 3)")).toBe(6); });
+test("subtraction", async () => { expect(await run("(- 10 3)")).toBe(7); });
+test("negate", async () => { expect(await run("(- 5)")).toBe(-5); });
+test("multiplication", async () => { expect(await run("(* 2 3 4)")).toBe(24); });
+test("division", async () => { expect(await run("(/ 12 4)")).toBe(3); });
+test("modulo", async () => { expect(await run("(mod 10 3)")).toBe(1); });
+test("nested arithmetic", async () => { expect(await run("(+ (* 2 3) (- 10 4))")).toBe(12); });
 
 // --- Comparison ---
 
-test("eq true", () => { expect(run("(eq 1 1)")).toBe(true); });
-test("eq false", () => { expect(run("(eq 1 2)")).toBe(false); });
-test("less than", () => { expect(run("(< 1 2)")).toBe(true); });
-test("greater than", () => { expect(run("(> 2 1)")).toBe(true); });
-test("not", () => { expect(run("(not false)")).toBe(true); });
+test("eq true", async () => { expect(await run("(eq 1 1)")).toBe(true); });
+test("eq false", async () => { expect(await run("(eq 1 2)")).toBe(false); });
+test("less than", async () => { expect(await run("(< 1 2)")).toBe(true); });
+test("greater than", async () => { expect(await run("(> 2 1)")).toBe(true); });
+test("not", async () => { expect(await run("(not false)")).toBe(true); });
 
 // --- String built-ins ---
 
-test("str concatenation", () => { expect(run('(str "hello" " " "world")')).toBe("hello world"); });
-test("str with number", () => { expect(run('(str "val: " 42)')).toBe("val: 42"); });
+test("str concatenation", async () => { expect(await run('(str "hello" " " "world")')).toBe("hello world"); });
+test("str with number", async () => { expect(await run('(str "val: " 42)')).toBe("val: 42"); });
 
 // --- const ---
 
-test("const binding", () => {
+test("const binding", async () => {
   const interp = new Interpreter();
-  runWith(interp, '(const x 10)');
-  expect(runWith(interp, 'x')).toBe(10);
+  await runWith(interp, '(const x 10)');
+  expect(await runWith(interp, 'x')).toBe(10);
 });
 
-test("const is immutable", () => {
+test("const is immutable", async () => {
   const interp = new Interpreter();
-  runWith(interp, '(const x 10)');
-  expect(() => runWith(interp, '(set x 20)')).toThrow();
+  await runWith(interp, '(const x 10)');
+  await expect(runWith(interp, '(set x 20)')).rejects.toThrow();
 });
 
-test("mutate bypasses const", () => {
+test("mutate bypasses const", async () => {
   const interp = new Interpreter();
-  runWith(interp, '(const x 10)');
-  runWith(interp, '(mutate x 99)');
-  expect(runWith(interp, 'x')).toBe(99);
+  await runWith(interp, '(const x 10)');
+  await runWith(interp, '(mutate x 99)');
+  expect(await runWith(interp, 'x')).toBe(99);
 });
 
 // --- var ---
 
-test("var binding with initial value", () => {
+test("var binding with initial value", async () => {
   const interp = new Interpreter();
-  runWith(interp, '(var counter: Int 0)');
-  expect(runWith(interp, 'counter')).toBe(0);
+  await runWith(interp, '(var counter: Int 0)');
+  expect(await runWith(interp, 'counter')).toBe(0);
 });
 
-test("var can be reassigned with set", () => {
+test("var can be reassigned with set", async () => {
   const interp = new Interpreter();
-  runWith(interp, '(var x: Int 1)');
-  runWith(interp, '(set x 42)');
-  expect(runWith(interp, 'x')).toBe(42);
+  await runWith(interp, '(var x: Int 1)');
+  await runWith(interp, '(set x 42)');
+  expect(await runWith(interp, 'x')).toBe(42);
 });
 
-test("var without init throws when accessed before set", () => {
+test("var without init throws when accessed before set", async () => {
   const interp = new Interpreter();
-  runWith(interp, '(var x: Int)');
-  expect(() => runWith(interp, 'x')).toThrow();
+  await runWith(interp, '(var x: Int)');
+  await expect(runWith(interp, 'x')).rejects.toThrow();
 });
 
 // --- local ---
 
-test("local binding", () => {
-  expect(run("(local [x 3 y 4] (+ x y))")).toBe(7);
+test("local binding", async () => {
+  expect(await run("(local [x 3 y 4] (+ x y))")).toBe(7);
 });
 
-test("local bindings are scoped", () => {
+test("local bindings are scoped", async () => {
   const interp = new Interpreter();
-  run("(local [x 99] x)");
-  expect(() => runWith(interp, "x")).toThrow();
+  await run("(local [x 99] x)");
+  await expect(runWith(interp, "x")).rejects.toThrow();
 });
 
-test("local sequential binding", () => {
-  expect(run("(local [x 3 y (* x 2)] y)")).toBe(6);
+test("local sequential binding", async () => {
+  expect(await run("(local [x 3 y (* x 2)] y)")).toBe(6);
 });
 
 // --- if ---
 
-test("if true branch", () => { expect(run("(if true 1 :else 2)")).toBe(1); });
-test("if false branch", () => { expect(run("(if false 1 :else 2)")).toBe(2); });
-test("if no else returns null", () => { expect(run("(if false 1)")).toBeNull(); });
+test("if true branch", async () => { expect(await run("(if true 1 :else 2)")).toBe(1); });
+test("if false branch", async () => { expect(await run("(if false 1 :else 2)")).toBe(2); });
+test("if no else returns null", async () => { expect(await run("(if false 1)")).toBeNull(); });
 
 // --- cond ---
 
-test("cond first match", () => {
-  expect(run("(cond (eq 1 1) :a (eq 2 2) :b :else :c)")).toBe(":a");
+test("cond first match", async () => {
+  expect(await run("(cond (eq 1 1) :a (eq 2 2) :b :else :c)")).toBe(":a");
 });
 
-test("cond else branch", () => {
-  expect(run("(cond (eq 1 2) :a :else :default)")).toBe(":default");
+test("cond else branch", async () => {
+  expect(await run("(cond (eq 1 2) :a :else :default)")).toBe(":default");
 });
 
 // --- do ---
 
-test("do returns last expression", () => {
-  expect(run("(do 1 2 3)")).toBe(3);
+test("do returns last expression", async () => {
+  expect(await run("(do 1 2 3)")).toBe(3);
 });
 
 // --- func ---
 
-test("function declaration and call", () => {
+test("function declaration and call", async () => {
   const interp = new Interpreter();
-  runWith(interp, "(func add: Int [a: Int b: Int] (+ a b))");
-  expect(runWith(interp, "(add :a 3 :b 4)")).toBe(7);
+  await runWith(interp, "(func add: Int [a: Int b: Int] (+ a b))");
+  expect(await runWith(interp, "(add :a 3 :b 4)")).toBe(7);
 });
 
-test("function with positional params", () => {
+test("function with positional params", async () => {
   const interp = new Interpreter();
-  runWith(interp, "(func double: Int [_ x: Int] (* x 2))");
-  expect(runWith(interp, "(double 5)")).toBe(10);
+  await runWith(interp, "(func double: Int [_ x: Int] (* x 2))");
+  expect(await runWith(interp, "(double 5)")).toBe(10);
 });
 
-test("recursive function", () => {
+test("recursive function", async () => {
   const interp = new Interpreter();
-  runWith(interp, "(func factorial: Int [_ n: Int] (if (eq n 0) 1 :else (* n (factorial (- n 1)))))");
-  expect(runWith(interp, "(factorial 5)")).toBe(120);
+  await runWith(interp, "(func factorial: Int [_ n: Int] (if (eq n 0) 1 :else (* n (factorial (- n 1)))))");
+  expect(await runWith(interp, "(factorial 5)")).toBe(120);
 });
 
-test("function with default param", () => {
+test("function with default param", async () => {
   const interp = new Interpreter();
-  runWith(interp, "(func greet: String [name: String greeting: (String \"Hello\")] (str greeting \", \" name))");
-  expect(runWith(interp, '(greet :name "Alice")')).toBe("Hello, Alice");
-  expect(runWith(interp, '(greet :name "Bob" :greeting "Hi")')).toBe("Hi, Bob");
+  await runWith(interp, "(func greet: String [name: String greeting: (String \"Hello\")] (str greeting \", \" name))");
+  expect(await runWith(interp, '(greet :name "Alice")')).toBe("Hello, Alice");
+  expect(await runWith(interp, '(greet :name "Bob" :greeting "Hi")')).toBe("Hi, Bob");
 });
 
-test("closure captures environment", () => {
+test("closure captures environment", async () => {
   const interp = new Interpreter();
-  runWith(interp, "(func make-adder: Int [_ n: Int] (func: Int [_ x: Int] (+ x n)))");
-  runWith(interp, "(const add5 (make-adder 5))");
-  expect(runWith(interp, "(add5 10)")).toBe(15);
+  await runWith(interp, "(func make-adder: Int [_ n: Int] (func: Int [_ x: Int] (+ x n)))");
+  await runWith(interp, "(const add5 (make-adder 5))");
+  expect(await runWith(interp, "(add5 10)")).toBe(15);
 });
 
-// --- async func (sync in interpreter) ---
+// --- async func ---
 
-test("async func runs synchronously in interpreter", () => {
+test("async func resolves correctly", async () => {
   const interp = new Interpreter();
-  runWith(interp, "(async func double: Int [_ x: Int] (* x 2))");
-  expect(runWith(interp, "(double 7)")).toBe(14);
+  await runWith(interp, "(async func double: Int [_ x: Int] (* x 2))");
+  expect(await runWith(interp, "(double 7)")).toBe(14);
 });
 
 // --- collections ---
 
-test("list creation", () => {
-  const result = run("(list 1 2 3)");
+test("list creation", async () => {
+  const result = await run("(list 1 2 3)");
   expect(result).toEqual([1, 2, 3]);
 });
 
-test("map creation", () => {
-  const result = run('(map :name "Alice" :age 30)');
+test("map creation", async () => {
+  const result = await run('(map :name "Alice" :age 30)');
   expect(isLiminalMap(result)).toBe(true);
   const m = result as Map<string, unknown>;
   expect(m.get("name")).toBe("Alice");
@@ -201,179 +201,179 @@ test("map creation", () => {
 
 // --- member access ---
 
-test("member access on map", () => {
+test("member access on map", async () => {
   const interp = new Interpreter();
-  runWith(interp, '(const person (map :name "Alice" :age 30))');
-  expect(runWith(interp, "person:name")).toBe("Alice");
-  expect(runWith(interp, "person:age")).toBe(30);
+  await runWith(interp, '(const person (map :name "Alice" :age 30))');
+  expect(await runWith(interp, "person:name")).toBe("Alice");
+  expect(await runWith(interp, "person:age")).toBe(30);
 });
 
-test("member access on string: length", () => {
-  expect(run('"hello":length')).toBe(5);
+test("member access on string: length", async () => {
+  expect(await run('"hello":length')).toBe(5);
 });
 
-test("missing map key returns nil", () => {
+test("missing map key returns nil", async () => {
   const interp = new Interpreter();
-  runWith(interp, '(const m (map :x 1))');
-  expect(isNil(runWith(interp, "m:y"))).toBe(true);
+  await runWith(interp, '(const m (map :x 1))');
+  expect(isNil(await runWith(interp, "m:y"))).toBe(true);
 });
 
 // --- nil handling ---
 
-test("nil propagates through arithmetic", () => {
+test("nil propagates through arithmetic", async () => {
   const interp = new Interpreter();
-  runWith(interp, "(var x: Int? nil)");
-  expect(isNil(runWith(interp, "(+ x 1)"))).toBe(true);
+  await runWith(interp, "(var x: Int? nil)");
+  expect(isNil(await runWith(interp, "(+ x 1)"))).toBe(true);
 });
 
-test("nil coalesce returns default", () => {
-  expect(run("(?? nil 42)")).toBe(42);
+test("nil coalesce returns default", async () => {
+  expect(await run("(?? nil 42)")).toBe(42);
 });
 
-test("nil coalesce returns value when not nil", () => {
-  expect(run("(?? 10 42)")).toBe(10);
+test("nil coalesce returns value when not nil", async () => {
+  expect(await run("(?? 10 42)")).toBe(10);
 });
 
-test("nil unwrap: non-nil path", () => {
+test("nil unwrap: non-nil path", async () => {
   const interp = new Interpreter();
-  runWith(interp, '(const x 5)');
-  expect(runWith(interp, "(? x :is-nil 0)")).toBe(5);
+  await runWith(interp, '(const x 5)');
+  expect(await runWith(interp, "(? x :is-nil 0)")).toBe(5);
 });
 
-test("nil unwrap: nil path", () => {
-  expect(run("(? nil :is-nil 99)")).toBe(99);
+test("nil unwrap: nil path", async () => {
+  expect(await run("(? nil :is-nil 99)")).toBe(99);
 });
 
-test("nil unwrap: no nil branch propagates nil", () => {
-  expect(isNil(run("(? nil)"))).toBe(true);
+test("nil unwrap: no nil branch propagates nil", async () => {
+  expect(isNil(await run("(? nil)"))).toBe(true);
 });
 
-test("nil trace is populated", () => {
+test("nil trace is populated", async () => {
   const interp = new Interpreter();
-  runWith(interp, "(var x: Int? nil)");
-  const result = runWith(interp, "x");
+  await runWith(interp, "(var x: Int? nil)");
+  const result = await runWith(interp, "x");
   expect(result).toBeInstanceOf(NilValue);
 });
 
 // --- try/catch ---
 
-test("try/catch catches error", () => {
-  expect(run('(try (/ 1 0) (catch err "caught"))')).toBe("caught");
+test("try/catch catches error", async () => {
+  expect(await run('(try (/ 1 0) (catch err "caught"))')).toBe("caught");
 });
 
-test("try/catch: catch binding has message", () => {
+test("try/catch: catch binding has message", async () => {
   const interp = new Interpreter();
-  const result = runWith(interp, '(try (/ 1 0) (catch err err:message))');
+  const result = await runWith(interp, '(try (/ 1 0) (catch err err:message))');
   expect(typeof result).toBe("string");
 });
 
-test("try with no error runs body", () => {
-  expect(run("(try (+ 1 2) (catch err 0))")).toBe(3);
+test("try with no error runs body", async () => {
+  expect(await run("(try (+ 1 2) (catch err 0))")).toBe(3);
 });
 
 // --- math built-ins ---
 
-test("sqrt", () => { expect(run("(sqrt 9)")).toBe(3); });
-test("abs", () => { expect(run("(abs -5)")).toBe(5); });
-test("floor", () => { expect(run("(floor 3.7)")).toBe(3); });
-test("ceil", () => { expect(run("(ceil 3.2)")).toBe(4); });
+test("sqrt", async () => { expect(await run("(sqrt 9)")).toBe(3); });
+test("abs", async () => { expect(await run("(abs -5)")).toBe(5); });
+test("floor", async () => { expect(await run("(floor 3.7)")).toBe(3); });
+test("ceil", async () => { expect(await run("(ceil 3.2)")).toBe(4); });
 
 // --- type predicates ---
 
-test("nil?", () => { expect(run("(nil? nil)")).toBe(true); });
-test("nil? false for number", () => { expect(run("(nil? 1)")).toBe(false); });
-test("number?", () => { expect(run("(number? 42)")).toBe(true); });
-test("string?", () => { expect(run('(string? "hi")')).toBe(true); });
-test("list?", () => { expect(run("(list? (list 1 2))")).toBe(true); });
+test("nil?", async () => { expect(await run("(nil? nil)")).toBe(true); });
+test("nil? false for number", async () => { expect(await run("(nil? 1)")).toBe(false); });
+test("number?", async () => { expect(await run("(number? 42)")).toBe(true); });
+test("string?", async () => { expect(await run('(string? "hi")')).toBe(true); });
+test("list?", async () => { expect(await run("(list? (list 1 2))")).toBe(true); });
 
 // --- dict literal ---
 
-test("dict creation", () => {
-  const result = run('(dict :name "Alice" :age 30)');
+test("dict creation", async () => {
+  const result = await run('(dict :name "Alice" :age 30)');
   expect(isLiminalMap(result)).toBe(true);
   const m = result as Map<string, unknown>;
   expect(m.get("name")).toBe("Alice");
   expect(m.get("age")).toBe(30);
 });
 
-test("dict: empty", () => {
-  const result = run("(dict)");
+test("dict: empty", async () => {
+  const result = await run("(dict)");
   expect(isLiminalMap(result)).toBe(true);
   expect((result as Map<string, unknown>).size).toBe(0);
 });
 
-test("dict member access", () => {
+test("dict member access", async () => {
   const interp = new Interpreter();
-  runWith(interp, '(const p (dict :name "Bob" :score 99))');
-  expect(runWith(interp, "p:name")).toBe("Bob");
-  expect(runWith(interp, "p:score")).toBe(99);
+  await runWith(interp, '(const p (dict :name "Bob" :score 99))');
+  expect(await runWith(interp, "p:name")).toBe("Bob");
+  expect(await runWith(interp, "p:score")).toBe(99);
 });
 
-test("dict?", () => {
-  expect(run("(dict? (dict :a 1))")).toBe(true);
-  expect(run("(dict? (list 1 2))")).toBe(false);
-  expect(run("(dict? 42)")).toBe(false);
+test("dict?", async () => {
+  expect(await run("(dict? (dict :a 1))")).toBe(true);
+  expect(await run("(dict? (list 1 2))")).toBe(false);
+  expect(await run("(dict? 42)")).toBe(false);
 });
 
 // --- tuple literal ---
 
-test("tuple creation", () => {
-  const result = run('(tuple "hello" 42 true)');
+test("tuple creation", async () => {
+  const result = await run('(tuple "hello" 42 true)');
   expect(isLiminalTuple(result)).toBe(true);
 });
 
-test("tuple: empty", () => {
-  const result = run("(tuple)");
+test("tuple: empty", async () => {
+  const result = await run("(tuple)");
   expect(isLiminalTuple(result)).toBe(true);
 });
 
-test("tuple: numeric index access", () => {
+test("tuple: numeric index access", async () => {
   const interp = new Interpreter();
-  runWith(interp, '(const t (tuple "hello" 42 true))');
-  expect(runWith(interp, "t:0")).toBe("hello");
-  expect(runWith(interp, "t:1")).toBe(42);
-  expect(runWith(interp, "t:2")).toBe(true);
+  await runWith(interp, '(const t (tuple "hello" 42 true))');
+  expect(await runWith(interp, "t:0")).toBe("hello");
+  expect(await runWith(interp, "t:1")).toBe(42);
+  expect(await runWith(interp, "t:2")).toBe(true);
 });
 
-test("tuple: out-of-bounds returns nil", () => {
+test("tuple: out-of-bounds returns nil", async () => {
   const interp = new Interpreter();
-  runWith(interp, "(const t (tuple 1 2))");
-  expect(isNil(runWith(interp, "t:9"))).toBe(true);
+  await runWith(interp, "(const t (tuple 1 2))");
+  expect(isNil(await runWith(interp, "t:9"))).toBe(true);
 });
 
-test("tuple: length", () => {
-  expect(run("(tuple 1 2 3):length")).toBe(3);
+test("tuple: length", async () => {
+  expect(await run("(tuple 1 2 3):length")).toBe(3);
 });
 
-test("tuple?", () => {
-  expect(run("(tuple? (tuple 1 2))")).toBe(true);
-  expect(run("(tuple? (list 1 2))")).toBe(false);
-  expect(run("(tuple? (dict :a 1))")).toBe(false);
+test("tuple?", async () => {
+  expect(await run("(tuple? (tuple 1 2))")).toBe(true);
+  expect(await run("(tuple? (list 1 2))")).toBe(false);
+  expect(await run("(tuple? (dict :a 1))")).toBe(false);
 });
 
 // --- throw / ThrowExpression ---
 
-test("throw is caught by try/catch", () => {
-  expect(run('(try (throw "boom") (catch err err:message))')).toBe("boom");
+test("throw is caught by try/catch", async () => {
+  expect(await run('(try (throw "boom") (catch err err:message))')).toBe("boom");
 });
 
-test("throw propagates out of try body", () => {
+test("throw propagates out of try body", async () => {
   const interp = new Interpreter();
-  runWith(interp, '(func risky [] (throw "oops"))');
-  expect(runWith(interp, '(try (risky) (catch err "caught"))')).toBe("caught");
+  await runWith(interp, '(func risky [] (throw "oops"))');
+  expect(await runWith(interp, '(try (risky) (catch err "caught"))')).toBe("caught");
 });
 
-test("throw a dict value — catch sees map fields", () => {
-  const result = run('(try (throw (dict :code 404 :msg "Not found")) (catch err err:code))');
+test("throw a dict value — catch sees map fields", async () => {
+  const result = await run('(try (throw (dict :code 404 :msg "Not found")) (catch err err:code))');
   expect(result).toBe(404);
 });
 
 // --- error cases ---
 
-test("undefined variable throws", () => {
-  expect(() => run("undefined-var")).toThrow();
+test("undefined variable throws", async () => {
+  await expect(run("undefined-var")).rejects.toThrow();
 });
 
-test("call non-function throws", () => {
-  expect(() => run("(42 1 2)")).toThrow(RuntimeError);
+test("call non-function throws", async () => {
+  await expect(run("(42 1 2)")).rejects.toThrow(RuntimeError);
 });

@@ -50,12 +50,12 @@ export class Interpreter {
     registerBuiltins(this.globalEnv);
   }
 
-  run(program: ASTNode): LiminalValue {
+  async run(program: ASTNode): Promise<LiminalValue> {
     if (program.type !== "Program") throw new RuntimeError("Expected Program node");
     return this.evalBody((program as { body: ASTNode[] }).body, this.globalEnv);
   }
 
-  eval(node: ASTNode, env: Environment): LiminalValue {
+  async eval(node: ASTNode, env: Environment): Promise<LiminalValue> {
     switch (node.type) {
 
       case "Program":
@@ -89,53 +89,57 @@ export class Interpreter {
           if (seg.kind === "literal") {
             result += seg.value;
           } else {
-            result += this.valueToString(this.eval(seg.expr, env));
+            result += this.valueToString(await this.eval(seg.expr, env));
           }
         }
         return result;
       }
 
-      case "List":
-        return node.elements.map(el => this.eval(el, env));
+      case "List": {
+        const elements: LiminalValue[] = [];
+        for (const el of node.elements) elements.push(await this.eval(el, env));
+        return elements;
+      }
 
       case "Dict": {
         const m: LiminalMap = new Map();
         for (const { key, value } of node.entries) {
-          m.set(key, this.eval(value, env));
+          m.set(key, await this.eval(value, env));
         }
         return m;
       }
 
       case "Tuple": {
-        const elements = node.elements.map(el => this.eval(el, env));
+        const elements: LiminalValue[] = [];
+        for (const el of node.elements) elements.push(await this.eval(el, env));
         return { kind: "tuple", elements } as LiminalTuple;
       }
 
       case "ThrowExpression": {
-        const val = this.eval(node.value, env);
+        const val = await this.eval(node.value, env);
         throw new LiminalThrowable(val, this.valueToString(val));
       }
 
       case "ConstDeclaration": {
-        const val = this.eval(node.value, env);
+        const val = await this.eval(node.value, env);
         env.defineConst(node.name, val);
         return val;
       }
 
       case "VarDeclaration": {
-        const val = node.value !== null ? this.eval(node.value, env) : null;
+        const val = node.value !== null ? await this.eval(node.value, env) : null;
         env.define(node.name, val, node.initialized);
         return val;
       }
 
       case "SetExpression": {
-        const val = this.eval(node.value, env);
+        const val = await this.eval(node.value, env);
         env.assign(node.name, val);
         return val;
       }
 
       case "MutateExpression": {
-        const val = this.eval(node.value, env);
+        const val = await this.eval(node.value, env);
         env.mutate(node.name, val);
         return val;
       }
@@ -143,7 +147,7 @@ export class Interpreter {
       case "LocalBinding": {
         const localEnv = env.extend();
         for (const [name, expr] of node.bindings) {
-          localEnv.define(name, this.eval(expr, localEnv));
+          localEnv.define(name, await this.eval(expr, localEnv));
         }
         return this.evalBody(node.body, localEnv);
       }
@@ -162,8 +166,9 @@ export class Interpreter {
       }
 
       case "CallExpression": {
-        const callee = this.eval(node.callee, env);
-        const args = node.args.map(a => this.eval(a, env));
+        const callee = await this.eval(node.callee, env);
+        // Args evaluated in parallel — order of evaluation is unspecified per language semantics
+        const args = await Promise.all(node.args.map(a => this.eval(a, env)));
         const loc = node.loc ?? { line: 0, column: 0 };
 
         if (isNil(callee)) return this.nilAt(callee, loc);
@@ -190,12 +195,12 @@ export class Interpreter {
       }
 
       case "MemberAccess": {
-        const obj = this.eval(node.object, env);
+        const obj = await this.eval(node.object, env);
         return this.memberAccess(obj, node.member, node.loc ?? { line: 0, column: 0 });
       }
 
       case "IfExpression": {
-        const cond = this.eval(node.condition, env);
+        const cond = await this.eval(node.condition, env);
         if (isNil(cond)) return cond;
         if (cond) return this.eval(node.consequent, env);
         if (node.alternate) return this.eval(node.alternate, env);
@@ -204,7 +209,7 @@ export class Interpreter {
 
       case "CondExpression": {
         for (const clause of node.clauses) {
-          const test = this.eval(clause.condition, env);
+          const test = await this.eval(clause.condition, env);
           if (isNil(test)) return test;
           if (test) return this.eval(clause.result, env);
         }
@@ -215,12 +220,12 @@ export class Interpreter {
         return this.evalBody(node.body, env);
 
       case "ImportDeclaration":
-        // Module system is Phase 4 — JS/npm imports are resolved at call sites via %
+        // Module system is Phase 6 — JS/npm imports are resolved at call sites via %
         return null;
 
       case "TryCatch": {
         try {
-          return this.evalBody(node.body, env);
+          return await this.evalBody(node.body, env);
         } catch (e) {
           if (e instanceof NilSignal) throw e; // nil signals pass through try/catch
           const catchEnv = env.extend();
@@ -229,16 +234,22 @@ export class Interpreter {
           }
           return this.evalBody(node.catchBody, catchEnv);
         } finally {
-          if (node.finallyBody) this.evalBody(node.finallyBody, env);
+          if (node.finallyBody) await this.evalBody(node.finallyBody, env);
         }
       }
 
-      case "AwaitExpression":
-        // Interpreter mode is synchronous — await is a no-op; Promise values pass through as InteropValues
-        return this.eval(node.expression, env);
+      case "AwaitExpression": {
+        const val = await this.eval(node.expression, env);
+        // If the result wraps a JS Promise (e.g. from an async interop call), actually await it
+        if (isInteropValue(val) && val.value instanceof Promise) {
+          const resolved = await (val.value as Promise<unknown>);
+          return this.jsToLiminal(resolved, node.loc ?? { line: 0, column: 0 });
+        }
+        return val;
+      }
 
       case "NilCoalesce": {
-        const val = this.eval(node.expression, env);
+        const val = await this.eval(node.expression, env);
         return isNil(val) ? this.eval(node.default, env) : val;
       }
 
@@ -247,7 +258,7 @@ export class Interpreter {
           const branchEnv = env.extend();
           let last: LiminalValue = null;
           for (const expr of node.nonNilBranch) {
-            last = this.eval(expr, branchEnv);
+            last = await this.eval(expr, branchEnv);
             if (isNil(last)) throw new NilSignal(last);
           }
           return last;
@@ -281,9 +292,9 @@ export class Interpreter {
 
   // --- Helpers ---
 
-  private evalBody(body: ASTNode[], env: Environment): LiminalValue {
+  private async evalBody(body: ASTNode[], env: Environment): Promise<LiminalValue> {
     let result: LiminalValue = null;
-    for (const node of body) result = this.eval(node, env);
+    for (const node of body) result = await this.eval(node, env);
     return result;
   }
 
@@ -335,12 +346,12 @@ export class Interpreter {
     return new NilValue({ symbol: member, ...loc });
   }
 
-  private applyFunction(
+  private async applyFunction(
     fn: LiminalFunction,
     args: LiminalValue[],
     loc: { line: number; column: number },
     callerEnv: Environment
-  ): LiminalValue {
+  ): Promise<LiminalValue> {
     const callEnv = fn.closure.extend();
     const positional = fn.params.filter(p => p.externalName === null);
     const named = fn.params.filter(p => p.externalName !== null);
@@ -377,7 +388,7 @@ export class Interpreter {
       if (kwArgs.has(ext)) {
         callEnv.define(param.name, kwArgs.get(ext)!);
       } else if (param.defaultValue !== null) {
-        callEnv.define(param.name, this.eval(param.defaultValue, callerEnv));
+        callEnv.define(param.name, await this.eval(param.defaultValue, callerEnv));
       } else if (param.typeAnnotation.optional) {
         callEnv.define(param.name, new NilValue({ symbol: param.name, ...loc }));
       } else {
@@ -391,16 +402,17 @@ export class Interpreter {
     return this.evalBody(fn.body, callEnv);
   }
 
-  private callInterop(
+  private async callInterop(
     callee: InteropValue,
     args: LiminalValue[],
     loc: { line: number; column: number }
-  ): LiminalValue {
+  ): Promise<LiminalValue> {
     if (typeof callee.value !== "function") {
       throw new RuntimeError(`InteropValue is not callable`, loc.line, loc.column);
     }
     const fn = callee.value as (...a: unknown[]) => unknown;
-    const result = fn(...args.map(a => this.liminalToJs(a)));
+    // Use Promise.resolve so sync and async interop functions are handled uniformly
+    const result = await Promise.resolve(fn(...args.map(a => this.liminalToJs(a))));
     return this.jsToLiminal(result, loc);
   }
 
