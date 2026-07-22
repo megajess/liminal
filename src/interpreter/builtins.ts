@@ -15,7 +15,7 @@ function nums(args: LiminalValue[], name: string): number[] {
   });
 }
 
-function valueToString(v: LiminalValue): string {
+export function valueToString(v: LiminalValue): string {
   if (v === null || isNil(v)) return "nil";
   if (typeof v === "string") return v;
   if (typeof v === "number" || typeof v === "boolean") return String(v);
