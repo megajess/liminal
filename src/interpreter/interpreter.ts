@@ -181,7 +181,12 @@ export class Interpreter {
         }
 
         if (isBuiltinFunction(callee)) {
-          return callee(...args);
+          const result = callee(...args);
+          if (isNil(result)) {
+            const symbol = node.callee.type === "Symbol" ? node.callee.name : "builtin";
+            return result.propagate({ symbol, line: loc.line, column: loc.column });
+          }
+          return result;
         }
 
         if (isInteropValue(callee)) {

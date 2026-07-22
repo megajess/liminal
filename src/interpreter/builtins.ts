@@ -117,11 +117,99 @@ const BUILTINS: Record<string, BuiltinFunction> = {
 
   "str": (...args) => args.map(valueToString).join(""),
 
+  // string is the canonical variadic concat + coercion function.
+  // (string 42) => "42"; (string "a " "b") => "a b"; nil renders as "nil".
+  "string": (...args) => args.map(valueToString).join(""),
+
   // --- I/O ---
 
   "log": (...args) => {
     console.log(...args.map(valueToString));
     return new NilValue({ symbol: "log", line: 0, column: 0 });
+  },
+
+  // printf-style formatter. Specifiers: %s %d %f %.Nf %e %b %o %x %X %%.
+  // Width and alignment follow printf: %10s right-aligns, %-10s left-aligns, %010d zero-pads.
+  // Nil arguments render as "nil" regardless of specifier.
+  "fmt": (...args) => {
+    if (args.length === 0) throw new Error("fmt: requires at least a template");
+    const template = args[0];
+    if (typeof template !== "string") {
+      throw new Error(`fmt: first argument must be a string, got ${typeof template}`);
+    }
+    const values = args.slice(1);
+    let out = "";
+    let i = 0;
+    let argIdx = 0;
+    while (i < template.length) {
+      if (template[i] !== "%") { out += template[i++]; continue; }
+      let j = i + 1;
+      let flags = "";
+      while (j < template.length && "-+0 #".includes(template[j])) { flags += template[j]; j++; }
+      let widthStr = "";
+      while (j < template.length && template[j] >= "0" && template[j] <= "9") { widthStr += template[j]; j++; }
+      let precisionStr = "";
+      if (template[j] === ".") {
+        j++;
+        while (j < template.length && template[j] >= "0" && template[j] <= "9") { precisionStr += template[j]; j++; }
+      }
+      const spec = template[j];
+      i = j + 1;
+      if (spec === "%") { out += "%"; continue; }
+      if (spec === undefined) throw new Error("fmt: incomplete format specifier at end of template");
+      const arg = values[argIdx++];
+      let s: string;
+      if (arg === null || isNil(arg)) {
+        s = "nil";
+      } else {
+        switch (spec) {
+          case "s": s = valueToString(arg); break;
+          case "d": {
+            if (typeof arg !== "number") throw new Error(`fmt: %d expects a number, got ${typeof arg}`);
+            s = String(Math.trunc(arg));
+            break;
+          }
+          case "f": {
+            if (typeof arg !== "number") throw new Error(`fmt: %f expects a number, got ${typeof arg}`);
+            s = precisionStr === "" ? String(arg) : arg.toFixed(parseInt(precisionStr, 10));
+            break;
+          }
+          case "e": {
+            if (typeof arg !== "number") throw new Error(`fmt: %e expects a number, got ${typeof arg}`);
+            s = precisionStr === "" ? arg.toExponential() : arg.toExponential(parseInt(precisionStr, 10));
+            break;
+          }
+          case "b": s = arg ? "true" : "false"; break;
+          case "o": {
+            if (typeof arg !== "number") throw new Error(`fmt: %o expects a number, got ${typeof arg}`);
+            s = Math.trunc(arg).toString(8);
+            break;
+          }
+          case "x": {
+            if (typeof arg !== "number") throw new Error(`fmt: %x expects a number, got ${typeof arg}`);
+            s = Math.trunc(arg).toString(16);
+            break;
+          }
+          case "X": {
+            if (typeof arg !== "number") throw new Error(`fmt: %X expects a number, got ${typeof arg}`);
+            s = Math.trunc(arg).toString(16).toUpperCase();
+            break;
+          }
+          default: throw new Error(`fmt: unknown format specifier '%${spec}'`);
+        }
+      }
+      if (widthStr !== "") {
+        const width = parseInt(widthStr, 10);
+        if (s.length < width) {
+          const leftAlign = flags.includes("-");
+          const zeroPad = flags.includes("0") && !leftAlign && "dfoxX".includes(spec);
+          const pad = (zeroPad ? "0" : " ").repeat(width - s.length);
+          s = leftAlign ? s + pad : pad + s;
+        }
+      }
+      out += s;
+    }
+    return out;
   },
 
   // --- Collections ---
@@ -178,6 +266,53 @@ const BUILTINS: Record<string, BuiltinFunction> = {
   "ceil": (...args) => {
     const n = nilIfAny(args); if (n) return n;
     const [x] = nums(args, "ceil"); return Math.ceil(x);
+  },
+
+  // --- Type conversion ---
+  // Per doc §"Type Constructors / Converters": conversions return nil on parse failure,
+  // never throw. Nil in → nil out (propagated). `string` and `bool` always succeed.
+
+  "int": (...args) => {
+    if (args.length !== 1) throw new Error("int: requires 1 argument");
+    const n = nilIfAny(args); if (n) return n;
+    const v = args[0];
+    if (typeof v === "number") return Math.trunc(v);
+    if (typeof v === "boolean") return v ? 1 : 0;
+    if (typeof v === "string") {
+      const t = v.trim();
+      if (!/^[-+]?\d+$/.test(t)) return null;
+      const parsed = parseInt(t, 10);
+      return Number.isFinite(parsed) ? parsed : null;
+    }
+    return null;
+  },
+
+  "float": (...args) => {
+    if (args.length !== 1) throw new Error("float: requires 1 argument");
+    const n = nilIfAny(args); if (n) return n;
+    const v = args[0];
+    if (typeof v === "number") return v;
+    if (typeof v === "boolean") return v ? 1 : 0;
+    if (typeof v === "string") {
+      const t = v.trim();
+      if (t === "" || !/^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/.test(t)) return null;
+      const parsed = parseFloat(t);
+      return Number.isFinite(parsed) ? parsed : null;
+    }
+    return null;
+  },
+
+  // bool: truthiness coercion. Only falsy values: false, nil, empty collections.
+  // 0, "", 0.0 are all truthy (stricter than JS).
+  "bool": (...args) => {
+    if (args.length !== 1) throw new Error("bool: requires 1 argument");
+    const v = args[0];
+    if (v === false) return false;
+    if (v === null || isNil(v)) return false;
+    if (Array.isArray(v) && v.length === 0) return false;
+    if (v instanceof Map && v.size === 0) return false;
+    if (isLiminalTuple(v) && v.elements.length === 0) return false;
+    return true;
   },
 
   // --- Type predicates ---

@@ -61,6 +61,85 @@ test("not", async () => { expect(await run("(not false)")).toBe(true); });
 
 test("str concatenation", async () => { expect(await run('(str "hello" " " "world")')).toBe("hello world"); });
 test("str with number", async () => { expect(await run('(str "val: " 42)')).toBe("val: 42"); });
+test("string concatenation", async () => { expect(await run('(string "a " "b " "c")')).toBe("a b c"); });
+test("string coerces number", async () => { expect(await run("(string 42)")).toBe("42"); });
+test("string coerces bool", async () => { expect(await run("(string true)")).toBe("true"); });
+test("string coerces nil", async () => { expect(await run("(string nil)")).toBe("nil"); });
+
+// --- fmt ---
+
+test("fmt %s", async () => { expect(await run('(fmt "hello %s" "world")')).toBe("hello world"); });
+test("fmt %d truncates float", async () => { expect(await run('(fmt "%d" 3.7)')).toBe("3"); });
+test("fmt %.2f", async () => { expect(await run('(fmt "%.2f" 3.14159)')).toBe("3.14"); });
+test("fmt width right-align", async () => { expect(await run('(fmt "|%10s|" "hi")')).toBe("|        hi|"); });
+test("fmt width left-align", async () => { expect(await run('(fmt "|%-10s|" "hi")')).toBe("|hi        |"); });
+test("fmt zero-pad", async () => { expect(await run('(fmt "%05d" 42)')).toBe("00042"); });
+test("fmt %x hex", async () => { expect(await run('(fmt "%x" 255)')).toBe("ff"); });
+test("fmt %X hex upper", async () => { expect(await run('(fmt "%X" 255)')).toBe("FF"); });
+test("fmt %o octal", async () => { expect(await run('(fmt "%o" 8)')).toBe("10"); });
+test("fmt %b bool", async () => { expect(await run('(fmt "%b" true)')).toBe("true"); });
+test("fmt %% literal", async () => { expect(await run('(fmt "100%%")')).toBe("100%"); });
+test("fmt nil renders as nil", async () => { expect(await run('(fmt "%d" nil)')).toBe("nil"); });
+test("fmt multiple", async () => { expect(await run('(fmt "%s = %d" "x" 42)')).toBe("x = 42"); });
+
+// --- Type conversion ---
+
+test("int from float truncates", async () => { expect(await run("(int 3.7)")).toBe(3); });
+test("int from negative float", async () => { expect(await run("(int -3.7)")).toBe(-3); });
+test("int from string parses", async () => { expect(await run('(int "42")')).toBe(42); });
+test("int from bad string returns nil-ish", async () => {
+  const r = await run('(int "hello")');
+  expect(r === null || isNil(r)).toBe(true);
+});
+test("int from int identity", async () => { expect(await run("(int 42)")).toBe(42); });
+test("float from int", async () => { expect(await run("(float 3)")).toBe(3); });
+test("float from string", async () => { expect(await run('(float "3.14")')).toBe(3.14); });
+test("float from bad string returns nil-ish", async () => {
+  const r = await run('(float "hello")');
+  expect(r === null || isNil(r)).toBe(true);
+});
+test("bool of true", async () => { expect(await run("(bool true)")).toBe(true); });
+test("bool of false", async () => { expect(await run("(bool false)")).toBe(false); });
+test("bool of nil", async () => { expect(await run("(bool nil)")).toBe(false); });
+test("bool of 0 is true", async () => { expect(await run("(bool 0)")).toBe(true); });
+test("bool of empty string is true", async () => { expect(await run('(bool "")')).toBe(true); });
+test("bool of non-empty string is true", async () => { expect(await run('(bool "x")')).toBe(true); });
+test("bool of empty list is false", async () => { expect(await run("(bool (list))")).toBe(false); });
+test("bool of non-empty list is true", async () => { expect(await run("(bool (list 1))")).toBe(true); });
+test("bool of empty dict is false", async () => { expect(await run("(bool (dict))")).toBe(false); });
+test("bool of empty tuple is false", async () => { expect(await run("(bool (tuple))")).toBe(false); });
+
+// --- Nil propagation through arithmetic/comparison (task 1.8: with trace) ---
+
+test("+ propagates nil", async () => {
+  const r = await run("(+ 1 nil 3)");
+  expect(isNil(r)).toBe(true);
+});
+test("* propagates nil", async () => {
+  expect(isNil(await run("(* 2 nil)"))).toBe(true);
+});
+test("- propagates nil", async () => {
+  expect(isNil(await run("(- 10 nil)"))).toBe(true);
+});
+test("< propagates nil", async () => {
+  expect(isNil(await run("(< nil 5)"))).toBe(true);
+});
+test("eq propagates nil", async () => {
+  expect(isNil(await run("(eq nil 1)"))).toBe(true);
+});
+test("nil trace records propagating operator", async () => {
+  const r = await run("(+ 1 nil)") as NilValue;
+  expect(isNil(r)).toBe(true);
+  const symbols = r.trace.map(e => e.symbol);
+  expect(symbols).toContain("+");
+});
+test("nil trace chains through nested ops", async () => {
+  const r = await run("(* 2 (+ 1 nil))") as NilValue;
+  expect(isNil(r)).toBe(true);
+  const symbols = r.trace.map(e => e.symbol);
+  expect(symbols).toContain("+");
+  expect(symbols).toContain("*");
+});
 
 // --- const ---
 
